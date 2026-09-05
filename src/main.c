@@ -8,187 +8,16 @@
 #include <sys/types.h>
 #include <dirent.h>
 
-typedef struct {
-    char **tokens;
-    size_t token_count;
-    size_t tokens_allocation_size;
-} Command;
+#include "command.h"
+#include "parser.h"
 
-Command *init_command();
-void append_command(Command *cmd, const char *str);
-void clear_command(Command *command);
-void free_command(Command *command);
 
-Command *init_command() {
-    Command *result = malloc(sizeof(Command));
-    if (!result) {
-        fprintf(stderr, "Error: failed to allocate Command\n");
-        exit(1);
-    }
-    result->tokens_allocation_size = 8;
-    result->token_count = 0;
-    result->tokens = calloc(result->tokens_allocation_size, sizeof(char *));
-    result->tokens[0] = NULL;
-
-    return result;
-}
-
-void append_token(Command *cmd, const char *str) {
-    if (str == NULL)
-        return;
-
-    if (cmd->token_count + 1 >= cmd->tokens_allocation_size) {
-        // realloc
-        size_t new_allocation_size = (int)(cmd->tokens_allocation_size * 2);
-        void *temp_data = realloc(cmd->tokens, new_allocation_size * sizeof(char *));
-        if (!temp_data) {
-            fprintf(stderr, "Error: failed to reallocate growing string array\n");
-            exit(1);
-        }
-        cmd->tokens = (char **)temp_data;
-        cmd->tokens_allocation_size = new_allocation_size;
-    }
-
-    // append
-    cmd->tokens[cmd->token_count] = strdup(str);
-    cmd->token_count++;
-    cmd->tokens[cmd->token_count] = NULL;
-}
-
-void clear_command(Command *cmd) {
-    assert(cmd);
-
-    for (size_t i = 0; i < cmd->token_count; i++) {
-        cmd->tokens[i] = NULL;
-    }
-
-    cmd->token_count = 0;
-}
-
-void free_command(Command *cmd) {
-    assert(cmd);
-
-    for (size_t i = 0; i < cmd->token_count; i++) {
-        free(cmd->tokens[i]);
-    }
-    free(cmd->tokens);
-    free(cmd);
-}
 
 void type_prompt(char *buffer) {
     printf("$ ");
     fgets(buffer, 256, stdin);
 }
 
-
-// Parser
-
-void read_command(Command *cmd, const char *input);
-void free_command(Command *cmd);
-
-typedef enum {
-    START,
-    OUTSIDE,
-
-    NUM_PARSING_STATES
-} ParsingState;
-
-typedef enum {
-    SPACE,
-    CHAR,
-    NEWLINE,
-    
-    NUM_CHARACTER_TYPES 
-} CharacterType;
-
-
-typedef struct {
-    ParsingState curr_state;
-    char curr_char;
-    char buffer[512];
-    size_t curr_buffer_index;
-} ParsingContext;
-
-void init_parser(ParsingContext *ctx);
-
-typedef void (*action_func)(Command *cmd, ParsingContext *ctx);
-
-typedef struct {
-    action_func next_action;
-    ParsingState new_state;
-} Transition;
-
-void action_do_nothing(Command *cmd, ParsingContext *ctx) { return; }
-
-void action_append_char(Command *cmd, ParsingContext *ctx) { 
-    ctx->buffer[ctx->curr_buffer_index++] = ctx->curr_char;
-}
-
-void action_add_token(Command *cmd, ParsingContext *ctx) { 
-    ctx->buffer[ctx->curr_buffer_index] = 0;
-    append_token(cmd, strdup(ctx->buffer));
-    ctx->curr_buffer_index = 0;
-}
-
-static const Transition parser_transition_table[NUM_PARSING_STATES][NUM_CHARACTER_TYPES] = {
-    [START] = {
-        [SPACE] = { action_do_nothing, START },
-        [CHAR] = { action_append_char, OUTSIDE },
-        [NEWLINE] = { action_do_nothing, START },
-    },
-    [OUTSIDE] = {
-        [SPACE] = { action_add_token, START },
-        [CHAR] = { action_append_char, OUTSIDE },
-        [NEWLINE] = { action_add_token, OUTSIDE },
-    },
-};
-
-void init_parser(ParsingContext *ctx) {
-    ctx->curr_buffer_index = 0;
-    ctx->curr_state = START;
-}
-
-CharacterType get_character_type(const char c) {
-    switch (c) {
-        case ' ':
-            return SPACE;
-        case '\n':
-            return NEWLINE;
-        default:
-            return CHAR;
-    }
-}
-
-void read_command(Command *cmd, const char *input) {
-    // echo      hello -> 'echo' 'hello'
-    ParsingContext parsing_context; 
-    init_parser(&parsing_context);
-    clear_command(cmd);
-
-    const char *curr_char = input;
-
-    while (1) {
-        char character = *curr_char++;
-        if (character) {
-            parsing_context.curr_char = character;
-            CharacterType char_type = get_character_type(parsing_context.curr_char);
-            Transition transition = parser_transition_table[parsing_context.curr_state][char_type];
-
-            transition.next_action(cmd, &parsing_context);
-            parsing_context.curr_state = transition.new_state;
-        }
-        else {
-            // we are at the end, append the current token or quit
-            if (parsing_context.curr_buffer_index == 0) {
-                return;
-            }
-            else {
-                action_add_token(cmd, &parsing_context);
-            }
-            break;
-        }
-    }
-} 
 
 int is_builtin_command(const char *command_keyword);
 int is_external_command(const char *command_keyword);
@@ -337,7 +166,7 @@ int main() {
 
     while (1) {
         type_prompt(buffer);
-        read_command(cmd, buffer);
+        parse_input(cmd, buffer);
 
         if (cmd->token_count == 0) continue;
 
