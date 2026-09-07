@@ -234,6 +234,8 @@ void run_external_command(Command *cmd) {
             argv[i] = strdup(cmd->tokens[i]);
         }
     }
+    // loop over the commands in the pipeline
+    // if there is another command in the pipeline later, create a pipe.
 
     pid_t pid;
     int status;
