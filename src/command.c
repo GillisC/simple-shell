@@ -14,6 +14,8 @@ Command *init_command() {
     result->token_count = 0;
     result->tokens = calloc(result->tokens_allocation_size, sizeof(char *));
     result->tokens[0] = NULL;
+    result->in_dst = NULL;
+    result->out_dst = NULL;
 
     return result;
 }

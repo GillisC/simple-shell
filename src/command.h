@@ -6,6 +6,8 @@ typedef struct {
     char **tokens;
     size_t token_count;
     size_t tokens_allocation_size;
+    char *in_dst;
+    char *out_dst;
 } Command;
 
 Command *init_command();

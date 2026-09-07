@@ -1,14 +1,9 @@
 #include "parser.h"
 
+#include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
-typedef enum {
-    SPACE,
-    CHAR,
-    NEWLINE,
-    
-    NUM_CHARACTER_TYPES 
-} CharacterType;
 
 typedef void (*action_func)(Command *cmd, ParsingContext *ctx);
 
@@ -29,16 +24,65 @@ void action_add_token(Command *cmd, ParsingContext *ctx) {
     ctx->curr_buffer_index = 0;
 }
 
+void action_redirect_out_mode(Command *cmd, ParsingContext *ctx) {
+    ctx->redirect_status = 1;
+}
+
+void action_redirect_in_mode(Command *cmd, ParsingContext *ctx) {
+    ctx->redirect_status = -1;
+}
+
+void action_error(Command *cmd, ParsingContext *ctx) {
+    fprintf(stderr, "Error when parsing input at character %c\n", ctx->curr_char);
+    exit(1);
+}
+
+void action_add_redirection_dst(Command *cmd, ParsingContext *ctx) {
+    assert(ctx->redirect_status != 0);
+
+    if (ctx->redirect_status == -1) {
+        // input
+        ctx->buffer[ctx->curr_buffer_index] = 0;
+        cmd->in_dst = strdup(ctx->buffer);
+        ctx->curr_buffer_index = 0;
+    }
+    else if (ctx->redirect_status == 1) {
+        // output 
+        ctx->buffer[ctx->curr_buffer_index] = 0;
+        cmd->out_dst = strdup(ctx->buffer);
+        ctx->curr_buffer_index = 0;
+    }
+    printf("updated redirection path %d: %s\n", ctx->redirect_status, ctx->buffer);
+}
+
 static const Transition parser_transition_table[NUM_PARSING_STATES][NUM_CHARACTER_TYPES] = {
     [START] = {
         [SPACE] = { action_do_nothing, START },
         [CHAR] = { action_append_char, OUTSIDE },
         [NEWLINE] = { action_do_nothing, START },
+        [REDIRECT_OUT] = { action_redirect_out_mode, REDIRECT_SEEKING },
+        [REDIRECT_IN] = { action_redirect_in_mode, REDIRECT_SEEKING },
     },
     [OUTSIDE] = {
         [SPACE] = { action_add_token, START },
         [CHAR] = { action_append_char, OUTSIDE },
         [NEWLINE] = { action_add_token, OUTSIDE },
+        [REDIRECT_OUT] = { action_redirect_out_mode, REDIRECT_SEEKING },
+        [REDIRECT_IN] = { action_redirect_in_mode, REDIRECT_SEEKING },
+    },
+    [REDIRECT_SEEKING] = {
+        [SPACE] = { action_do_nothing, REDIRECT_SEEKING },
+        [CHAR] = { action_append_char, REDIRECT_INSIDE },
+        [NEWLINE] = { action_error, REDIRECT_SEEKING },
+        [REDIRECT_OUT] = { action_error, REDIRECT_SEEKING },
+        [REDIRECT_IN] = { action_error, REDIRECT_SEEKING },
+    },
+    [REDIRECT_INSIDE] = {
+        [SPACE] = { action_add_redirection_dst, OUTSIDE },
+        [CHAR] = { action_append_char, REDIRECT_INSIDE },
+        [NEWLINE] = { action_add_redirection_dst, OUTSIDE },
+        [REDIRECT_OUT] = { action_error, REDIRECT_INSIDE },
+        [REDIRECT_IN] = { action_error, REDIRECT_INSIDE },
     },
 };
 
@@ -53,6 +97,10 @@ CharacterType get_character_type(const char c) {
             return SPACE;
         case '\n':
             return NEWLINE;
+        case '>':
+            return REDIRECT_OUT;
+        case '<':
+            return REDIRECT_IN;
         default:
             return CHAR;
     }
