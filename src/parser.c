@@ -55,7 +55,6 @@ void action_add_redirection_dst(ParsingContext *ctx) {
         ctx->curr->out_dst = strdup(ctx->buffer);
         ctx->curr_buffer_index = 0;
     }
-    printf("updated redirection path %d: %s\n", ctx->redirect_status, ctx->buffer);
 }
 
 void action_append_command(ParsingContext *ctx) {
@@ -122,7 +121,6 @@ CharacterType get_character_type(const char c) {
 }
 
 void parse_input(Command *cmd, const char *input) {
-    // echo      hello -> 'echo' 'hello'
     ParsingContext parsing_context; 
     init_parser(&parsing_context);
 

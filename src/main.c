@@ -231,16 +231,11 @@ int main() {
 
     while (1) {
         type_prompt(buffer);
-
         parse_input(cmd, buffer);
-        print_cmd(cmd);
+        // print_cmd(cmd);
         
-        Command *head = cmd;
-        Command *curr = head;
+        Command *curr = cmd;
         int read_from_previous_pipe = -1;
-
-        int pids[4] = {-1, -1, -1, -1}; 
-        int command_index = 0;
 
         while (curr) {
             int pipefd[2] = { -1, -1 };
@@ -255,16 +250,14 @@ int main() {
                 }
             }
 
-            pid_t pid;
-            pid = fork();
-            pids[command_index] = pid;
+            curr->pid = fork();
 
-            if (pid == -1) {
+            if (curr->pid == -1) {
                 perror("fork()");
                 exit(EXIT_FAILURE);
             }
 
-            if (pid == 0) {
+            if (curr->pid == 0) {
                 // child process
 
                 // check read end on pipe
@@ -301,7 +294,7 @@ int main() {
                     run_external_command(curr);
                 }
                 else {
-                    fprintf(stderr, "Unknown cmd: %s\n", curr->tokens[0]);
+                    fprintf(stderr, "Unknown cmd: %s\n", curr->tokens[-1]);
                 }
 
                 exit(0);
@@ -322,18 +315,12 @@ int main() {
                 // keep the current read end
                 read_from_previous_pipe = pipefd[0];
 
-                command_index++;
-                curr = curr->next_command;
+                curr = next_command(curr);
             }
         }
         
         // reap the processes
-        for (int i = 0; i < 4; i++) {
-            int pid = pids[i];
-            int status;
-            if (pid == -1) continue;
-            waitpid(pid, &status, WCONTINUED | WUNTRACED);
-        }
+        reap_processes(cmd);
     }
 #endif
     return 0;

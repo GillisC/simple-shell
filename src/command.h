@@ -9,11 +9,14 @@ typedef struct c {
     char *in_dst;
     char *out_dst;
     int background;
+    int pid; // the process id, -1 if command was not executed as a separate process
     struct c *next_command;
 } Command;
 
 Command *init_command();
+Command *next_command(Command *cmd);
 void append_token(Command *cmd, const char *str);
 void print_cmd(Command *cmd);
-void clear_commands(Command *command);
-void free_command(Command *command);
+void clear_commands(Command *cmd);
+void reap_processes(Command *cmd);
+void free_command(Command *cmd);
