@@ -79,7 +79,7 @@ static const Transition parser_transition_table[NUM_PARSING_STATES][NUM_CHARACTE
         [NEWLINE] = { action_add_token, OUTSIDE },
         [REDIRECT_OUT] = { action_redirect_out_mode, REDIRECT_SEEKING },
         [REDIRECT_IN] = { action_redirect_in_mode, REDIRECT_SEEKING },
-        [PIPE] = { action_append_command, OUTSIDE}
+        [PIPE] = { action_append_command, START}
     },
     [REDIRECT_SEEKING] = {
         [SPACE] = { action_do_nothing, REDIRECT_SEEKING },
