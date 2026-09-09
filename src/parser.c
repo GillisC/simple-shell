@@ -1,58 +1,67 @@
 #include "parser.h"
+#include "command.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
 
-typedef void (*action_func)(Command *cmd, ParsingContext *ctx);
+typedef void (*action_func)(ParsingContext *ctx);
 
 typedef struct {
     action_func next_action;
     ParsingState new_state;
 } Transition;
 
-void action_do_nothing(Command *cmd, ParsingContext *ctx) { return; }
+void action_do_nothing(ParsingContext *ctx) { 
+    (void)ctx;
+}
 
-void action_append_char(Command *cmd, ParsingContext *ctx) { 
+void action_append_char(ParsingContext *ctx) { 
     ctx->buffer[ctx->curr_buffer_index++] = ctx->curr_char;
 }
 
-void action_add_token(Command *cmd, ParsingContext *ctx) { 
+void action_add_token(ParsingContext *ctx) { 
     ctx->buffer[ctx->curr_buffer_index] = 0;
-    append_token(cmd, strdup(ctx->buffer));
+    append_token(ctx->curr, strdup(ctx->buffer));
     ctx->curr_buffer_index = 0;
 }
 
-void action_redirect_out_mode(Command *cmd, ParsingContext *ctx) {
+void action_redirect_out_mode(ParsingContext *ctx) {
     ctx->redirect_status = 1;
 }
 
-void action_redirect_in_mode(Command *cmd, ParsingContext *ctx) {
+void action_redirect_in_mode(ParsingContext *ctx) {
     ctx->redirect_status = -1;
 }
 
-void action_error(Command *cmd, ParsingContext *ctx) {
+void action_error(ParsingContext *ctx) {
     fprintf(stderr, "Error when parsing input at character %c\n", ctx->curr_char);
     exit(1);
 }
 
-void action_add_redirection_dst(Command *cmd, ParsingContext *ctx) {
+void action_add_redirection_dst(ParsingContext *ctx) {
     assert(ctx->redirect_status != 0);
 
     if (ctx->redirect_status == -1) {
         // input
         ctx->buffer[ctx->curr_buffer_index] = 0;
-        cmd->in_dst = strdup(ctx->buffer);
+        ctx->curr->in_dst = strdup(ctx->buffer);
         ctx->curr_buffer_index = 0;
     }
     else if (ctx->redirect_status == 1) {
         // output 
         ctx->buffer[ctx->curr_buffer_index] = 0;
-        cmd->out_dst = strdup(ctx->buffer);
+        ctx->curr->out_dst = strdup(ctx->buffer);
         ctx->curr_buffer_index = 0;
     }
     printf("updated redirection path %d: %s\n", ctx->redirect_status, ctx->buffer);
+}
+
+void action_append_command(ParsingContext *ctx) {
+    assert(ctx->curr->next_command == NULL);
+    ctx->curr->next_command = init_command();
+    ctx->curr = ctx->curr->next_command;
 }
 
 static const Transition parser_transition_table[NUM_PARSING_STATES][NUM_CHARACTER_TYPES] = {
@@ -62,13 +71,15 @@ static const Transition parser_transition_table[NUM_PARSING_STATES][NUM_CHARACTE
         [NEWLINE] = { action_do_nothing, START },
         [REDIRECT_OUT] = { action_redirect_out_mode, REDIRECT_SEEKING },
         [REDIRECT_IN] = { action_redirect_in_mode, REDIRECT_SEEKING },
+        [PIPE] = { action_error, START}
     },
     [OUTSIDE] = {
-        [SPACE] = { action_add_token, START },
+        [SPACE] = { action_add_token, OUTSIDE },
         [CHAR] = { action_append_char, OUTSIDE },
         [NEWLINE] = { action_add_token, OUTSIDE },
         [REDIRECT_OUT] = { action_redirect_out_mode, REDIRECT_SEEKING },
         [REDIRECT_IN] = { action_redirect_in_mode, REDIRECT_SEEKING },
+        [PIPE] = { action_append_command, OUTSIDE}
     },
     [REDIRECT_SEEKING] = {
         [SPACE] = { action_do_nothing, REDIRECT_SEEKING },
@@ -76,6 +87,7 @@ static const Transition parser_transition_table[NUM_PARSING_STATES][NUM_CHARACTE
         [NEWLINE] = { action_error, REDIRECT_SEEKING },
         [REDIRECT_OUT] = { action_error, REDIRECT_SEEKING },
         [REDIRECT_IN] = { action_error, REDIRECT_SEEKING },
+        [PIPE] = { action_error, REDIRECT_SEEKING}
     },
     [REDIRECT_INSIDE] = {
         [SPACE] = { action_add_redirection_dst, OUTSIDE },
@@ -83,6 +95,7 @@ static const Transition parser_transition_table[NUM_PARSING_STATES][NUM_CHARACTE
         [NEWLINE] = { action_add_redirection_dst, OUTSIDE },
         [REDIRECT_OUT] = { action_error, REDIRECT_INSIDE },
         [REDIRECT_IN] = { action_error, REDIRECT_INSIDE },
+        [PIPE] = { action_error, REDIRECT_SEEKING}
     },
 };
 
@@ -101,6 +114,8 @@ CharacterType get_character_type(const char c) {
             return REDIRECT_OUT;
         case '<':
             return REDIRECT_IN;
+        case '|':
+            return PIPE;
         default:
             return CHAR;
     }
@@ -110,7 +125,11 @@ void parse_input(Command *cmd, const char *input) {
     // echo      hello -> 'echo' 'hello'
     ParsingContext parsing_context; 
     init_parser(&parsing_context);
-    clear_command(cmd);
+
+    clear_commands(cmd);
+    assert(cmd->next_command == NULL);
+    parsing_context.head = cmd;
+    parsing_context.curr = cmd;
 
     const char *curr_char = input;
 
@@ -121,7 +140,7 @@ void parse_input(Command *cmd, const char *input) {
             CharacterType char_type = get_character_type(parsing_context.curr_char);
             Transition transition = parser_transition_table[parsing_context.curr_state][char_type];
 
-            transition.next_action(cmd, &parsing_context);
+            transition.next_action(&parsing_context);
             parsing_context.curr_state = transition.new_state;
         }
         else {
@@ -130,7 +149,7 @@ void parse_input(Command *cmd, const char *input) {
                 return;
             }
             else {
-                action_add_token(cmd, &parsing_context);
+                action_add_token(&parsing_context);
             }
             break;
         }

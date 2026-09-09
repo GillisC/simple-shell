@@ -273,7 +273,9 @@ int main() {
 
     while (1) {
         type_prompt(buffer);
+
         parse_input(cmd, buffer);
+        print_cmd(cmd);
 
         if (cmd->token_count == 0) continue;
 

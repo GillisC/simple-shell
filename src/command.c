@@ -16,6 +16,7 @@ Command *init_command() {
     result->tokens[0] = NULL;
     result->in_dst = NULL;
     result->out_dst = NULL;
+    result->next_command = NULL;
 
     return result;
 }
@@ -42,18 +43,48 @@ void append_token(Command *cmd, const char *str) {
     cmd->tokens[cmd->token_count] = NULL;
 }
 
-void clear_command(Command *cmd) {
+void print_cmd(Command *cmd) {
+    Command *curr = cmd;
+    while (curr) {
+        printf("--------------------------------\n");
+        printf("input:   %s\n", curr->in_dst);
+        printf("output:  %s\n", curr->out_dst);
+        printf("command: "); 
+        for (size_t i = 0; i < curr->token_count; i++) {
+            printf("%s ", curr->tokens[i]);
+        }
+        printf("\n");
+        printf("--------------------------------\n");
+
+        curr = curr->next_command;
+    }
+}
+
+void clear_commands(Command *cmd) {
+    // free the entire linked list of commands, keep the head
     assert(cmd);
 
     for (size_t i = 0; i < cmd->token_count; i++) {
         cmd->tokens[i] = NULL;
     }
-
     cmd->token_count = 0;
+    cmd->in_dst = NULL;
+    cmd->out_dst = NULL;
+    cmd->background = 0;
+
+    free_command(cmd->next_command); // free the next command
+    cmd->next_command = NULL;
 }
 
 void free_command(Command *cmd) {
+    // starting at head (input *cmd)
+    // walk down then free yourself;
+
+    if (!cmd) return;
+
     assert(cmd);
+
+    free_command(cmd->next_command);
 
     for (size_t i = 0; i < cmd->token_count; i++) {
         free(cmd->tokens[i]);
